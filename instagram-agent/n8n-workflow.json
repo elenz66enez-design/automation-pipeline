@@ -1,0 +1,652 @@
+{
+  "name": "Rabbi Goldsteyn — Instagram Comment → AI DM (2-Step)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "name": "Schedule: Every 15 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://app.upload-post.com/api/v1/comments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "post_id",
+              "value": "={{ $vars.INSTAGRAM_POST_ID }}"
+            },
+            {
+              "name": "limit",
+              "value": "50"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0002-0002-0002-000000000002",
+      "name": "Get Comments (upload-post.com)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "UPLOADPOST_API_CRED",
+          "name": "upload-post.com API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $vars.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "ig_dm_sent",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0003-0003-0003-000000000003",
+      "name": "Read Sent Log (Google Sheets)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [680, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CRED",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build a Set of already-processed comment_ids from Google Sheets\nconst sentItems = $('Read Sent Log (Google Sheets)').all();\nconst sentIds = new Set(sentItems.map(item => item.json.comment_id));\n\n// Get comments from upload-post.com response\nconst response = $('Get Comments (upload-post.com)').first().json;\nconst comments = response.data || response.comments || [];\n\n// Keywords that trigger the flow\nconst KEYWORDS = ['link', 'links', 'info', 'wohlstand', 'cheat', 'gmbh', 'steuern', 'schick', 'senden'];\n\n// Filter: new comments only + contains keyword\nconst newComments = comments.filter(comment => {\n  const id = comment.id || comment.comment_id;\n  const text = (comment.text || comment.comment_text || '').toLowerCase();\n  const hasKeyword = KEYWORDS.some(kw => text.includes(kw));\n  return !sentIds.has(id) && hasKeyword;\n});\n\nreturn newComments.map(comment => ({\n  json: {\n    comment_id: comment.id || comment.comment_id,\n    username: comment.username || comment.from?.username || 'du',\n    comment_text: comment.text || comment.comment_text || '',\n    timestamp: comment.timestamp || new Date().toISOString()\n  }\n}));"
+      },
+      "id": "a1b2c3d4-0004-0004-0004-000000000004",
+      "name": "Filter: New + Keyword Match",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-items",
+              "leftValue": "={{ $json.comment_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0005-0005-0005-000000000005",
+      "name": "IF: New Comment?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://elenz66enez--rabbi-goldsteyn-dm-agent-webhook.modal.run/generate",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "username",
+              "value": "={{ $json.username }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.comment_text }}"
+            },
+            {
+              "name": "source",
+              "value": "comment"
+            },
+            {
+              "name": "step",
+              "value": "teaser"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "enabled": true,
+            "maxTries": 3,
+            "waitBetweenTries": 2000
+          },
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-0006-0006-0006-000000000006",
+      "name": "Generate Teaser DM (Modal AI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract text from Modal /generate response\n// Response format: { version: 'v2', content: { messages: [{ type: 'text', text: '...' }] } }\nconst response = $input.first().json;\nconst text = response?.content?.messages?.[0]?.text \n  || response?.text \n  || 'Schreib mir kurz — ich schick dir was Interessantes.';\n\nreturn [{\n  json: {\n    ...($('Filter: New + Keyword Match').first().json),\n    dm_text: text\n  }\n}];"
+      },
+      "id": "a1b2c3d4-0007-0007-0007-000000000007",
+      "name": "Extract Teaser Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://app.upload-post.com/api/v1/messages/dm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"post_id\": \"{{ $vars.INSTAGRAM_POST_ID }}\",\n  \"username\": \"{{ $json.username }}\",\n  \"message\": \"{{ $json.dm_text }}\"\n}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0008-0008-0008-000000000008",
+      "name": "Send Teaser DM (upload-post.com)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "UPLOADPOST_API_CRED",
+          "name": "upload-post.com API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $vars.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "ig_dm_sent",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "comment_id": "={{ $('Extract Teaser Text').first().json.comment_id }}",
+            "username": "={{ $('Extract Teaser Text').first().json.username }}",
+            "ts": "={{ new Date().toISOString() }}",
+            "step": "teaser"
+          }
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0009-0009-0009-000000000009",
+      "name": "Log Teaser Sent (Google Sheets)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [2000, 200],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CRED",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-0010-0010-0010-000000000010",
+      "name": "Schedule: DM Replies (5 min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 700]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://app.upload-post.com/api/v1/messages/inbox",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "20"
+            },
+            {
+              "name": "unread",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0011-0011-0011-000000000011",
+      "name": "Get DM Replies (upload-post.com)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 700],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "UPLOADPOST_API_CRED",
+          "name": "upload-post.com API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $vars.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "ig_dm_sent",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0012-0012-0012-000000000012",
+      "name": "Read Teaser State (Google Sheets)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [680, 700],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CRED",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Find users who: got teaser DM, haven't gotten full DM, now replied\nconst sheetItems = $('Read Teaser State (Google Sheets)').all();\nconst inbox = $('Get DM Replies (upload-post.com)').first().json;\nconst messages = inbox.data || inbox.messages || [];\n\n// Build map: username -> { teaser: bool, full: bool }\nconst userState = {};\nfor (const row of sheetItems) {\n  const u = row.json.username;\n  if (!userState[u]) userState[u] = { teaser: false, full: false };\n  if (row.json.step === 'teaser') userState[u].teaser = true;\n  if (row.json.step === 'full') userState[u].full = true;\n}\n\n// Filter: users who got teaser but NOT full DM, and have a new reply\nconst toProcess = messages\n  .filter(msg => {\n    const u = msg.username || msg.from?.username;\n    const state = userState[u];\n    return state && state.teaser && !state.full;\n  })\n  .map(msg => ({\n    json: {\n      username: msg.username || msg.from?.username || 'du',\n      message_text: msg.text || msg.message || 'ja',\n      message_id: msg.id\n    }\n  }));\n\nif (toProcess.length === 0) {\n  return [{ json: { skip: true } }];\n}\nreturn toProcess;"
+      },
+      "id": "a1b2c3d4-0013-0013-0013-000000000013",
+      "name": "Filter: Teaser Replied, No Full Yet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 700]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "not-skip",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0014-0014-0014-000000000014",
+      "name": "IF: Has Replies to Process?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 700]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://elenz66enez--rabbi-goldsteyn-dm-agent-webhook.modal.run/generate",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "username",
+              "value": "={{ $json.username }}"
+            },
+            {
+              "name": "message",
+              "value": "link"
+            },
+            {
+              "name": "source",
+              "value": "comment"
+            },
+            {
+              "name": "step",
+              "value": "full"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "enabled": true,
+            "maxTries": 3,
+            "waitBetweenTries": 2000
+          }
+        }
+      },
+      "id": "a1b2c3d4-0015-0015-0015-000000000015",
+      "name": "Generate Full DM (Modal AI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst text = response?.content?.messages?.[0]?.text \n  || response?.text \n  || 'Hier ist dein Link zum Wohlstands Cheat Code.';\n\nreturn [{\n  json: {\n    ...($('Filter: Teaser Replied, No Full Yet').first().json),\n    dm_text: text\n  }\n}];"
+      },
+      "id": "a1b2c3d4-0016-0016-0016-000000000016",
+      "name": "Extract Full DM Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 600]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://app.upload-post.com/api/v1/messages/dm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"post_id\": \"{{ $vars.INSTAGRAM_POST_ID }}\",\n  \"username\": \"{{ $json.username }}\",\n  \"message\": \"{{ $json.dm_text }}\"\n}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0017-0017-0017-000000000017",
+      "name": "Send Full DM (upload-post.com)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 600],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "UPLOADPOST_API_CRED",
+          "name": "upload-post.com API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $vars.GOOGLE_SHEET_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "ig_dm_sent",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "comment_id": "full_dm",
+            "username": "={{ $('Extract Full DM Text').first().json.username }}",
+            "ts": "={{ new Date().toISOString() }}",
+            "step": "full"
+          }
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0018-0018-0018-000000000018",
+      "name": "Log Full DM Sent (Google Sheets)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [2000, 600],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CRED",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: Every 15 min": {
+      "main": [
+        [
+          {
+            "node": "Get Comments (upload-post.com)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Comments (upload-post.com)": {
+      "main": [
+        [
+          {
+            "node": "Read Sent Log (Google Sheets)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Sent Log (Google Sheets)": {
+      "main": [
+        [
+          {
+            "node": "Filter: New + Keyword Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: New + Keyword Match": {
+      "main": [
+        [
+          {
+            "node": "IF: New Comment?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: New Comment?": {
+      "main": [
+        [
+          {
+            "node": "Generate Teaser DM (Modal AI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Teaser DM (Modal AI)": {
+      "main": [
+        [
+          {
+            "node": "Extract Teaser Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Teaser Text": {
+      "main": [
+        [
+          {
+            "node": "Send Teaser DM (upload-post.com)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Teaser DM (upload-post.com)": {
+      "main": [
+        [
+          {
+            "node": "Log Teaser Sent (Google Sheets)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule: DM Replies (5 min)": {
+      "main": [
+        [
+          {
+            "node": "Get DM Replies (upload-post.com)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get DM Replies (upload-post.com)": {
+      "main": [
+        [
+          {
+            "node": "Read Teaser State (Google Sheets)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Teaser State (Google Sheets)": {
+      "main": [
+        [
+          {
+            "node": "Filter: Teaser Replied, No Full Yet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter: Teaser Replied, No Full Yet": {
+      "main": [
+        [
+          {
+            "node": "IF: Has Replies to Process?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Has Replies to Process?": {
+      "main": [
+        [
+          {
+            "node": "Generate Full DM (Modal AI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Full DM (Modal AI)": {
+      "main": [
+        [
+          {
+            "node": "Extract Full DM Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Full DM Text": {
+      "main": [
+        [
+          {
+            "node": "Send Full DM (upload-post.com)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Full DM (upload-post.com)": {
+      "main": [
+        [
+          {
+            "node": "Log Full DM Sent (Google Sheets)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "versionId": "rabbi-goldsteyn-v1",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "rabbi-goldsteyn-dm-agent"
+  },
+  "id": "rabbi-goldsteyn-n8n-workflow",
+  "tags": ["instagram", "rabbi-goldsteyn", "ai-dm"]
+}
