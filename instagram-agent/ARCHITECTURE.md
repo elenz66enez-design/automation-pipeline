@@ -43,17 +43,21 @@ Instagram Post
                   │ Generated DM text
                   ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  DM DELIVERY LAYER  ⚠️ NEEDS RESOLUTION                      │
+│  DM DELIVERY LAYER  ✅ RESOLVED                              │
 │                                                              │
-│  Originally planned: upload-post.com                         │
-│  ❌ upload-post.com = content publishing only (no DM API)    │
+│  ManyChat Pro (confirmed) — official Meta Business Partner  │
+│  No App Review needed. Real-time comment trigger.           │
 │                                                              │
-│  Alternatives to evaluate:                                   │
-│  A) ManyChat (Pro) — has IG DM API, already integrated       │
-│  B) Instagram Graph API directly (needs App Review)          │
-│  C) Manychat + Modal webhook (current working path)          │
-│  D) Phantombuster — has IG DM automation                     │
-│  E) Waapi.app / Wati — IG DM APIs with own App Review        │
+│  Flow 1 (Comment → Teaser):                                  │
+│    Comment Trigger → External Request /generate?step=teaser │
+│    → Set Custom Field teaser_sent=true → Send DM            │
+│                                                              │
+│  Flow 2 (Reply → Full DM):                                   │
+│    DM Trigger → Check teaser_sent=true → External Request   │
+│    /generate?step=full → Send Full DM → full_sent=true      │
+│                                                              │
+│  Dedup: ManyChat Custom User Fields (no Google Sheets needed)│
+│  Config: manychat-flow.md                                    │
 └─────────────────┬───────────────────────────────────────────┘
                   │
                   ▼
@@ -95,7 +99,7 @@ Instagram Post
 
 | # | Issue | Priority | Status |
 |---|-------|----------|--------|
-| 1 | DM delivery layer — upload-post.com has no DM API | HIGH | ⚠️ Needs decision |
+| 1 | DM delivery layer — ManyChat Pro as delivery layer | HIGH | ✅ Resolved |
 | 2 | Meta App Review for Instagram webhooks | MEDIUM | Pending submission |
 | 3 | n8n workflow not yet live (manual setup remaining) | HIGH | Setup pending |
 | 4 | upload-post.com account not created | HIGH | Manual step |
