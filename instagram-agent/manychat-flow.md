@@ -44,12 +44,16 @@ Name: **"Rabbi — Comment Teaser DM"**
 ### Trigger: Instagram Post/Reel Comment
 
 1. **+ Add Trigger** → "Instagram Post and Reel Comments"
-2. **Post:** Wähle den Rabbi Goldsteyn Post (oder "All Posts")
+2. **Post:** "Specific Post" → neusten Reel auswählen
+   - In ManyChat auf "Select Post" klicken
+   - Es zeigt deine letzten Posts/Reels an → den neusten wählen
+   - Post ID wird automatisch gespeichert
 3. **Keyword filter:** Contains ANY of:
    ```
-   link, links, info, wohlstand, cheat, gmbh, steuern, schick, senden, reich, steuern
+   link, links, info, wohlstand, cheat, gmbh, steuern, schick, senden, reich
    ```
 4. **Reply type:** Private Reply (DM) ✓
+5. **Also send public reply:** Optional — z.B. "📩 Hab dir was geschickt!"
 
 ---
 
@@ -215,12 +219,42 @@ curl -X POST \
 # }
 ```
 
-### ManyChat Test:
-1. Flow öffnen → **"Test Flow"** Button
-2. Mit deinem eigenen Instagram Account testen
-3. Comment "link" unter den Post
-4. Prüfen: Teaser DM angekommen?
-5. Auf Teaser antworten → Full DM prüfen
+### ✅ Endpoint bereits live getestet (2026-03-25):
+
+**Teaser Response:**
+```
+"Ich sehe dass du mehr über die Mechanismen hinter dem Rücken der Mittelklasse
+wissen möchtest. Das System hält viele in einer Situation wo sie sich arm fühlen
+obwohl sie sparen. Hast du jemals daran gedacht dass es ein anderes System geben
+könnte das dich aus dieser Lage befreit?"
+```
+
+**Full DM Response:**
+```
+"Hab dir den Link direkt geschickt, damit du mehr über 'Der Wohlstands Cheat Code'
+erfährst: [product link]. Schau mal rein, vielleicht findest du da die Lösung."
+```
+→ Response Zeit: **<3 Sekunden** (weit unter ManyChat's 10s Timeout) ✅
+→ ManyChat v2 Format: ✅
+
+### ManyChat Testplan (erst testen, dann live):
+
+**Phase 1 — ManyChat Test-Modus (kein echtes Posting):**
+1. Flow in ManyChat öffnen → "Test Flow" Button (oben rechts)
+2. ManyChat öffnet einen Test-Chat in deinem Instagram DM
+3. Kommentiere mit deinem Test-Account "link" unter den Reel
+4. Prüfen: Teaser DM angekommen? Text sinnvoll?
+5. Auf Teaser antworten (beliebiger Text)
+6. Prüfen: Full DM mit Link angekommen?
+7. Custom Fields prüfen: `teaser_sent = true`, `full_sent = true`?
+
+**Phase 2 — Live schalten:**
+- Flow von "Draft" → **"Active"** schalten (Toggle oben rechts)
+- Fertig. Läuft ab sofort auf dem neusten Reel.
+
+**Phase 3 — Nach erstem echten Trigger prüfen:**
+- ManyChat → Analytics → Flow Activity ansehen
+- Modal Dashboard: https://elenz66enez--rabbi-goldsteyn-dm-agent-webhook.modal.run/dashboard
 
 ---
 
