@@ -1,5 +1,5 @@
 {
-  "name": "Rabbi Goldsteyn — Instagram Comment → AI DM (2-Step)",
+  "name": "Rabbi Goldsteyn \u2014 Instagram Comment \u2192 AI DM (2-Step)",
   "nodes": [
     {
       "parameters": {
@@ -16,7 +16,10 @@
       "name": "Schedule: Every 15 min",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.1,
-      "position": [240, 300]
+      "position": [
+        240,
+        300
+      ]
     },
     {
       "parameters": {
@@ -43,7 +46,10 @@
       "name": "Get Comments (upload-post.com)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [460, 300],
+      "position": [
+        460,
+        300
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "UPLOADPOST_API_CRED",
@@ -70,7 +76,10 @@
       "name": "Read Sent Log (Google Sheets)",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.4,
-      "position": [680, 300],
+      "position": [
+        680,
+        300
+      ],
       "credentials": {
         "googleSheetsOAuth2Api": {
           "id": "GOOGLE_SHEETS_CRED",
@@ -80,13 +89,16 @@
     },
     {
       "parameters": {
-        "jsCode": "// Build a Set of already-processed comment_ids from Google Sheets\nconst sentItems = $('Read Sent Log (Google Sheets)').all();\nconst sentIds = new Set(sentItems.map(item => item.json.comment_id));\n\n// Get comments from upload-post.com response\nconst response = $('Get Comments (upload-post.com)').first().json;\nconst comments = response.data || response.comments || [];\n\n// Keywords that trigger the flow\nconst KEYWORDS = ['link', 'links', 'info', 'wohlstand', 'cheat', 'gmbh', 'steuern', 'schick', 'senden'];\n\n// Filter: new comments only + contains keyword\nconst newComments = comments.filter(comment => {\n  const id = comment.id || comment.comment_id;\n  const text = (comment.text || comment.comment_text || '').toLowerCase();\n  const hasKeyword = KEYWORDS.some(kw => text.includes(kw));\n  return !sentIds.has(id) && hasKeyword;\n});\n\nreturn newComments.map(comment => ({\n  json: {\n    comment_id: comment.id || comment.comment_id,\n    username: comment.username || comment.from?.username || 'du',\n    comment_text: comment.text || comment.comment_text || '',\n    timestamp: comment.timestamp || new Date().toISOString()\n  }\n}));"
+        "jsCode": "// \u2500\u2500 Google Sheets OAuth error guard \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// If Sheets auth fails, fall back to empty set so workflow continues\nlet sentIds = new Set();\ntry {\n  const sentItems = $('Read Sent Log (Google Sheets)').all();\n  sentIds = new Set(sentItems.map(item => item.json.comment_id).filter(Boolean));\n} catch (e) {\n  console.log('[WARN] Sheets OAuth failed, continuing without dedup:', e.message);\n}\n\nconst response = $('Get Comments (upload-post.com)').first().json;\nconst comments = response.data || response.comments || [];\nconst KEYWORDS = ['link', 'links', 'info', 'wohlstand', 'cheat', 'gmbh', 'steuern', 'schick', 'senden'];\n\nconst newComments = comments.filter(comment => {\n  const id = comment.id || comment.comment_id;\n  const text = (comment.text || comment.comment_text || '').toLowerCase();\n  const hasKeyword = KEYWORDS.some(kw => text.includes(kw));\n  return !sentIds.has(id) && hasKeyword;\n});\n\nif (newComments.length === 0) return [{ json: { skip: true } }];\n\nreturn newComments.map(comment => ({\n  json: {\n    comment_id: comment.id || comment.comment_id,\n    username: comment.username || comment.from?.username || 'du',\n    comment_text: comment.text || comment.comment_text || '',\n    timestamp: comment.timestamp || new Date().toISOString()\n  }\n}));"
       },
       "id": "a1b2c3d4-0004-0004-0004-000000000004",
       "name": "Filter: New + Keyword Match",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 300]
+      "position": [
+        900,
+        300
+      ]
     },
     {
       "parameters": {
@@ -115,7 +127,10 @@
       "name": "IF: New Comment?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1120, 300]
+      "position": [
+        1120,
+        300
+      ]
     },
     {
       "parameters": {
@@ -143,16 +158,11 @@
           ]
         },
         "options": {
-          "timeout": 30000,
+          "timeout": 35000,
           "retry": {
             "enabled": true,
             "maxTries": 3,
-            "waitBetweenTries": 2000
-          },
-          "response": {
-            "response": {
-              "neverError": false
-            }
+            "waitBetweenTries": 3000
           }
         }
       },
@@ -160,17 +170,23 @@
       "name": "Generate Teaser DM (Modal AI)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1340, 200]
+      "position": [
+        1340,
+        200
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Extract text from Modal /generate response\n// Response format: { version: 'v2', content: { messages: [{ type: 'text', text: '...' }] } }\nconst response = $input.first().json;\nconst text = response?.content?.messages?.[0]?.text \n  || response?.text \n  || 'Schreib mir kurz — ich schick dir was Interessantes.';\n\nreturn [{\n  json: {\n    ...($('Filter: New + Keyword Match').first().json),\n    dm_text: text\n  }\n}];"
+        "jsCode": "// Extract text from Modal /generate response\n// Response format: { version: 'v2', content: { messages: [{ type: 'text', text: '...' }] } }\nconst response = $input.first().json;\nconst text = response?.content?.messages?.[0]?.text \n  || response?.text \n  || 'Schreib mir kurz \u2014 ich schick dir was Interessantes.';\n\nreturn [{\n  json: {\n    ...($('Filter: New + Keyword Match').first().json),\n    dm_text: text\n  }\n}];"
       },
       "id": "a1b2c3d4-0007-0007-0007-000000000007",
       "name": "Extract Teaser Text",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1560, 200]
+      "position": [
+        1560,
+        200
+      ]
     },
     {
       "parameters": {
@@ -187,7 +203,10 @@
       "name": "Send Teaser DM (upload-post.com)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1780, 200],
+      "position": [
+        1780,
+        200
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "UPLOADPOST_API_CRED",
@@ -223,7 +242,10 @@
       "name": "Log Teaser Sent (Google Sheets)",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.4,
-      "position": [2000, 200],
+      "position": [
+        2000,
+        200
+      ],
       "credentials": {
         "googleSheetsOAuth2Api": {
           "id": "GOOGLE_SHEETS_CRED",
@@ -246,7 +268,10 @@
       "name": "Schedule: DM Replies (5 min)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.1,
-      "position": [240, 700]
+      "position": [
+        240,
+        700
+      ]
     },
     {
       "parameters": {
@@ -273,7 +298,10 @@
       "name": "Get DM Replies (upload-post.com)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [460, 700],
+      "position": [
+        460,
+        700
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "UPLOADPOST_API_CRED",
@@ -300,7 +328,10 @@
       "name": "Read Teaser State (Google Sheets)",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.4,
-      "position": [680, 700],
+      "position": [
+        680,
+        700
+      ],
       "credentials": {
         "googleSheetsOAuth2Api": {
           "id": "GOOGLE_SHEETS_CRED",
@@ -316,7 +347,10 @@
       "name": "Filter: Teaser Replied, No Full Yet",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 700]
+      "position": [
+        900,
+        700
+      ]
     },
     {
       "parameters": {
@@ -345,7 +379,10 @@
       "name": "IF: Has Replies to Process?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1120, 700]
+      "position": [
+        1120,
+        700
+      ]
     },
     {
       "parameters": {
@@ -373,11 +410,11 @@
           ]
         },
         "options": {
-          "timeout": 30000,
+          "timeout": 35000,
           "retry": {
             "enabled": true,
             "maxTries": 3,
-            "waitBetweenTries": 2000
+            "waitBetweenTries": 3000
           }
         }
       },
@@ -385,7 +422,10 @@
       "name": "Generate Full DM (Modal AI)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1340, 600]
+      "position": [
+        1340,
+        600
+      ]
     },
     {
       "parameters": {
@@ -395,7 +435,10 @@
       "name": "Extract Full DM Text",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1560, 600]
+      "position": [
+        1560,
+        600
+      ]
     },
     {
       "parameters": {
@@ -412,7 +455,10 @@
       "name": "Send Full DM (upload-post.com)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1780, 600],
+      "position": [
+        1780,
+        600
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "UPLOADPOST_API_CRED",
@@ -448,13 +494,39 @@
       "name": "Log Full DM Sent (Google Sheets)",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.4,
-      "position": [2000, 600],
+      "position": [
+        2000,
+        600
+      ],
       "credentials": {
         "googleSheetsOAuth2Api": {
           "id": "GOOGLE_SHEETS_CRED",
           "name": "Google Sheets OAuth2"
         }
       }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://elenz66enez--rabbi-goldsteyn-dm-agent-webhook.modal.run/health",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-0023-0023-0023-000000000023",
+      "name": "Warmup: Ping Modal (avoid cold-start)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1120,
+        160
+      ],
+      "notes": "Pings Modal to warm the container before the actual generate call. Prevents cold-start timeout on teaser DM."
     }
   ],
   "connections": {
@@ -506,7 +578,7 @@
       "main": [
         [
           {
-            "node": "Generate Teaser DM (Modal AI)",
+            "node": "Warmup: Ping Modal (avoid cold-start)",
             "type": "main",
             "index": 0
           }
@@ -633,6 +705,17 @@
           }
         ]
       ]
+    },
+    "Warmup: Ping Modal (avoid cold-start)": {
+      "main": [
+        [
+          {
+            "node": "Generate Teaser DM (Modal AI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -648,5 +731,9 @@
     "instanceId": "rabbi-goldsteyn-dm-agent"
   },
   "id": "rabbi-goldsteyn-n8n-workflow",
-  "tags": ["instagram", "rabbi-goldsteyn", "ai-dm"]
+  "tags": [
+    "instagram",
+    "rabbi-goldsteyn",
+    "ai-dm"
+  ]
 }
